@@ -4,7 +4,7 @@
 
 **Fictional Reasoning** 是一款本地运行的 AI 推理审讯游戏。玩家导入 TXT 案件材料，选择断案难度后，在 Persona 5 Royal 风格的审讯界面中逐一询问人物、出示证物、比对证词，并决定是否申请逮捕。
 
-## 评委快速体验 / Download
+## Download
 
 > **Windows 下载版：** [打开 v1.0.0 发布页](https://github.com/darksoul-tryhard/fictional-reasoning/releases/tag/v.1.0.0)
 
