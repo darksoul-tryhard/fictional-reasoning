@@ -4,6 +4,24 @@
 
 **Fictional Reasoning** 是一款本地运行的 AI 推理审讯游戏。玩家导入 TXT 案件材料，选择断案难度后，在 Persona 5 Royal 风格的审讯界面中逐一询问人物、出示证物、比对证词，并决定是否申请逮捕。
 
+## 评委快速体验 / Download
+
+> **Windows 下载版：** [打开 v1.0.0 发布页](https://github.com/darksoul-tryhard/fictional-reasoning/releases/tag/v.1.0.0)
+
+| 文件 | 用途 |
+| --- | --- |
+| [Fictional.Reasoning.zip](https://github.com/darksoul-tryhard/fictional-reasoning/releases/download/v.1.0.0/Fictional.Reasoning.zip) | Windows 游戏本体 |
+| [Lone.Lantern.on.a.Snowy.Night.txt](https://github.com/darksoul-tryhard/fictional-reasoning/releases/download/v.1.0.0/Lone.Lantern.on.a.Snowy.Night.txt) | 可直接导入的附带案件 |
+
+**游玩步骤**
+
+1. 下载并解压 `Fictional.Reasoning.zip`。
+2. 双击文件夹中的 `虚构推理.exe`；发布包已内置运行时，**无需安装 Node.js**。
+3. 首次启动时，在首页的“API 配置”填写可用的 OpenAI Chat Completions 兼容模型 API。
+4. 在首页选择 `Lone.Lantern.on.a.Snowy.Night.txt`，即可载入附带案件并开始审讯。
+
+**运行条件：** Windows 10/11 64 位、网络连接，以及玩家自行配置的兼容模型 API。案件文本、模型密钥和存档均保留在玩家本机。
+
 ## 主要功能
 
 - 导入 UTF-8、GBK 或 GB18030 编码的 TXT，自动提取案件标题。
