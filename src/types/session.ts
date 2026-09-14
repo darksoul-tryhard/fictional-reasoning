@@ -89,6 +89,8 @@ export interface SessionState {
   /** 最近一次行动时间，存档列表用它排序。 */
   updatedAt: string
   currentSubject: string | null
+  /** 每个人物单独保存的问答记录。 */
+  conversations: Record<string, Array<{ role: 'user' | 'npc'; content: string }>>
   history: Array<{ role: 'user' | 'npc'; content: string }>
   trust: Record<string, number>
   hostility: Record<string, number>

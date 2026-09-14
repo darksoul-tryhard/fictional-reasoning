@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { findCase } from '../services/caseStore.js'
+import { flushPersistence } from '../services/persistence.js'
 import { deleteSession, listSessions } from '../services/sessionStore.js'
 import type { Difficulty } from '../services/sessionStore.js'
 
@@ -9,6 +10,7 @@ import type { Difficulty } from '../services/sessionStore.js'
  * 「看有哪些存档」与「删掉一份存档」两个操作。
  *
  *   GET    /api/saves              -> 200 { saves: SaveSlot[] }
+ *   POST   /api/saves/flush        -> 200 立即写入 save 文件夹
  *   DELETE /api/saves/:sessionId   -> 204 | 404
  *
  * 响应只含界面需要的进度摘要，不含案件原文，也不含案件真相。
@@ -55,6 +57,17 @@ export function createSavesRouter() {
       }
     })
     response.json({ saves })
+  })
+
+  // 自动存档有短暂节流；玩家主动点击时必须等到文件完成写入再返回成功。
+  router.post('/saves/flush', async (_request, response) => {
+    response.setHeader('Cache-Control', 'no-store')
+    try {
+      await flushPersistence()
+      response.json({ message: '进度已保存到 save 文件夹。' })
+    } catch {
+      response.status(500).json({ error: '存档写入失败，请检查 save 文件夹权限后重试。' })
+    }
   })
 
   router.delete('/saves/:sessionId', (request, response) => {

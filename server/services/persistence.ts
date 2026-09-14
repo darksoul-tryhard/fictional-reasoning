@@ -57,11 +57,11 @@ interface LoadedSave {
   newer: boolean
 }
 
-/** 默认存到项目根目录的 .data/save.json（已被 .gitignore 排除），可用 SAVE_FILE 覆盖。 */
+/** 默认存到项目根目录的 save/save.json；发布包提供空目录，玩家进度只写在自己的副本中。 */
 export function defaultSaveFile(): string {
   const override = process.env.SAVE_FILE?.trim()
   if (override) return override
-  return join(fileURLToPath(new URL('../../.data/', import.meta.url)), 'save.json')
+  return join(fileURLToPath(new URL('../../save/', import.meta.url)), 'save.json')
 }
 
 export function caseArchivePath(saveFile: string): string {

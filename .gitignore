@@ -22,6 +22,9 @@ tests/fixtures/private/*
 
 # 本地游戏存档：含案件原文与案件真相，只留在本机，绝不入库
 .data/
+.browser-profile/
+/save/*
+!/save/.gitkeep
 
 # Windows 一键启动器编译产物
 看破！.exe

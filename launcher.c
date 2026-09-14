@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <stdio.h>
+#include <string.h>
 
 static void show_error(const wchar_t *title, const wchar_t *message) {
     MessageBoxW(NULL, message, title, MB_OK | MB_ICONERROR);
@@ -46,6 +47,52 @@ static int port_is_open(int port) {
     closesocket(socket_handle);
     WSACleanup();
     return connected;
+}
+
+/**
+ * 3001 端口可能属于任何本机程序，不能仅凭 connect 成功就把它当作游戏后端。
+ * 只接受本项目固定的健康检查响应，避免打开错误服务或错误地接管其他程序。
+ */
+static int project_api_is_ready(int port) {
+    WSADATA winsock;
+    if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0) return 0;
+
+    SOCKET socket_handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (socket_handle == INVALID_SOCKET) {
+        WSACleanup();
+        return 0;
+    }
+    struct sockaddr_in address = { 0 };
+    address.sin_family = AF_INET;
+    address.sin_port = htons((u_short)port);
+    InetPtonW(AF_INET, L"127.0.0.1", &address.sin_addr);
+    if (connect(socket_handle, (struct sockaddr *)&address, sizeof(address)) != 0) {
+        closesocket(socket_handle);
+        WSACleanup();
+        return 0;
+    }
+
+    const char request[] = "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    if (send(socket_handle, request, (int)strlen(request), 0) == SOCKET_ERROR) {
+        closesocket(socket_handle);
+        WSACleanup();
+        return 0;
+    }
+    DWORD timeout_ms = 1500;
+    setsockopt(socket_handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms));
+    char response[4096] = { 0 };
+    int total = 0;
+    while (total < (int)sizeof(response) - 1) {
+        int received = recv(socket_handle, response + total, (int)sizeof(response) - 1 - total, 0);
+        if (received <= 0) break;
+        total += received;
+    }
+    closesocket(socket_handle);
+    WSACleanup();
+    return total > 0
+        && strstr(response, " 200 ") != NULL
+        && strstr(response, "\"status\":\"ok\"") != NULL
+        && strstr(response, "\"service\":\"interrogation-api\"") != NULL;
 }
 
 static int start_project(const wchar_t *directory, const wchar_t *runtime_node, PROCESS_INFORMATION *process) {
@@ -118,7 +165,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
 
     PROCESS_INFORMATION server = { 0 };
     int server_started_here = 0;
-    if (!port_is_open(3001)) {
+    int existing_port = port_is_open(3001);
+    int existing_game = project_api_is_ready(3001);
+    if (existing_port && !existing_game) {
+        show_error(L"虚构推理", L"3001 端口正被其他程序占用，无法启动《虚构推理》。请关闭占用该端口的程序后重试。");
+        return 1;
+    }
+    if (!existing_game) {
         if (!start_project(directory, runtime_node, &server)) {
             show_error(L"虚构推理", L"项目启动失败。请确认发布包中的 runtime、dist-server 和 node_modules 文件夹完整。");
             return 1;
@@ -129,7 +182,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
         int ready = 0;
         for (int attempt = 0; attempt < 60; ++attempt) {
             Sleep(500);
-            if (port_is_open(3001)) {
+            if (project_api_is_ready(3001)) {
                 ready = 1;
                 break;
             }

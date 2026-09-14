@@ -49,6 +49,39 @@ test('chat client extracts JSON wrapped in Markdown or explanatory text', async 
   }
 })
 
+test('chat client accepts an SSE response from a gateway that ignores stream:false', async () => {
+  const body = [
+    'data: {"choices":[{"delta":{"content":"{\\"ok\\":"}}]}',
+    'data: {"choices":[{"delta":{"content":"true}"},"finish_reason":"stop"}]}',
+    'data: [DONE]',
+    '',
+  ].join('\n')
+  const result = await requestChatJson({
+    baseUrl: 'https://example.com/v1', apiKey: 'test-key', model: 'test-model', system: 'system', user: 'user',
+  }, async () => new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }))
+  assert.deepEqual(result, { ok: true })
+})
+
+test('chat client identifies an HTML gateway response without exposing its body', async () => {
+  await assert.rejects(
+    requestChatJson({
+      baseUrl: 'https://example.com/v1', apiKey: 'test-key', model: 'test-model', system: 'system', user: 'user',
+    }, async () => new Response('<html>private gateway detail</html>', { status: 200, headers: { 'Content-Type': 'text/html' } })),
+    (error: unknown) => error instanceof Error
+      && error.message === '模型服务返回了网页而不是 API 数据，请检查 Base URL 是否指向接口地址。'
+      && !error.message.includes('private gateway detail'),
+  )
+})
+
+test('chat client classifies provider context rejections so the parser can use smaller chunks', async () => {
+  await assert.rejects(
+    requestChatJson({
+      baseUrl: 'https://example.com/v1', apiKey: 'test-key', model: 'test-model', system: 'system', user: 'user',
+    }, async () => new Response('', { status: 413 })),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === 'LLM_CONTEXT_REJECTED',
+  )
+})
+
 test('chat client reports a truncated response separately', async () => {
   await assert.rejects(
     requestChatJson({

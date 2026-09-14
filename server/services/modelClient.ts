@@ -1,3 +1,6 @@
+import { requestChatJson } from './chatClient.js'
+import { ModelError } from './modelError.js'
+
 export type ModelConnectionResult = { ok: true; model: string } | { ok: false; status: number; message: string }
 
 function getBaseUrl(environment: NodeJS.ProcessEnv) {
@@ -33,12 +36,18 @@ export async function testModelConnection(environment: NodeJS.ProcessEnv = proce
     const result = await listModels(environment, transport)
     return result.ok ? { ok: true, model: result.models[0] ?? '' } : result
   }
-  const url = new URL(config.url)
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/chat/completions`
   try {
-    const response = await transport(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000), headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: 'user', content: '请只回复：连接成功' }] }) })
-    await response.body?.cancel()
-    if (!response.ok) return { ok: false, status: response.status, message: response.status === 401 || response.status === 403 ? 'API Key 无效或无权访问该模型。' : `模型服务返回 HTTP ${response.status}。` }
+    const payload = await requestChatJson({
+      baseUrl: config.url.toString(), apiKey: config.key, model,
+      system: '只输出一个 JSON 对象：{"ready":true}。不要输出其他内容。',
+      user: '验证接口响应格式。', timeoutMs: 15_000, maxTokens: 32,
+    }, transport)
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || (payload as { ready?: unknown }).ready !== true) {
+      return { ok: false, status: 502, message: '模型服务未返回预期的 JSON 验证结果，请检查模型或接口兼容性。' }
+    }
     return { ok: true, model }
-  } catch { return { ok: false, status: 502, message: '无法连接模型服务，请检查网络和 Base URL。' } }
+  } catch (error) {
+    if (error instanceof ModelError) return { ok: false, status: error.status, message: error.message }
+    return { ok: false, status: 502, message: '无法连接模型服务，请检查网络和 Base URL。' }
+  }
 }

@@ -78,6 +78,9 @@ export interface SessionState {
   /** 最近一次行动的时间；存档列表按它排序，显示「上次审讯」用。 */
   updatedAt: string
   currentSubject: string | null
+  /** 每个人物各自的问答记录。切换审讯对象时只读取对应一栏。 */
+  conversations: Record<string, Array<{ role: 'user' | 'npc'; content: string }>>
+  /** 旧版全局记录，保留以兼容已有存档；新对话不会再写入这里。 */
   history: Array<{ role: 'user' | 'npc'; content: string }>
   trust: Record<string, number>
   hostility: Record<string, number>
@@ -194,7 +197,12 @@ export function createSession(caseId: unknown, difficulty: Difficulty = 'normal'
   const characters = briefing?.characters ?? []
   const trust: Record<string, number> = {}
   const hostility: Record<string, number> = {}
-  for (const person of characters) { trust[person.name] = 50; hostility[person.name] = 0 }
+  const conversations: SessionState['conversations'] = {}
+  for (const person of characters) {
+    trust[person.name] = 50
+    hostility[person.name] = 0
+    conversations[person.name] = []
+  }
 
   const session: SessionState = {
     caseConfidence: 0,
@@ -202,6 +210,7 @@ export function createSession(caseId: unknown, difficulty: Difficulty = 'normal'
     caseId: record.caseId,
     updatedAt: now(),
     currentSubject: null,
+    conversations,
     history: [],
     trust,
     hostility,
@@ -272,8 +281,13 @@ export function pushEvent(session: SessionState, event: Omit<SessionEvent, 'even
   return record
 }
 
-export function pushHistory(session: SessionState, role: 'user' | 'npc', content: string) {
-  session.history.push({ role, content })
+export function pushHistory(session: SessionState, suspectId: string, role: 'user' | 'npc', content: string) {
+  const line = { role, content }
+  const conversation = session.conversations[suspectId] ?? (session.conversations[suspectId] = [])
+  conversation.push(line)
+  if (conversation.length > MAX_HISTORY) conversation.splice(0, conversation.length - MAX_HISTORY)
+  // 兼容旧版 API 和已有测试；界面与模型上下文均使用 conversations，不会混用人物对话。
+  session.history.push(line)
   if (session.history.length > MAX_HISTORY) session.history.splice(0, session.history.length - MAX_HISTORY)
 }
 
@@ -491,6 +505,16 @@ function readDifficulty(value: unknown, actionPointsTotal: unknown): Difficulty 
   return 'normal'
 }
 
+function readConversations(value: unknown, suspects: Record<string, number>): SessionState['conversations'] {
+  const result: SessionState['conversations'] = Object.fromEntries(Object.keys(suspects).map((name) => [name, []]))
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
+  for (const name of Object.keys(suspects)) {
+    const lines = readHistory((value as Record<string, unknown>)[name])
+    if (lines.length) result[name] = lines
+  }
+  return result
+}
+
 function readStoredSession(value: unknown): SessionState | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const raw = value as Record<string, unknown>
@@ -505,13 +529,19 @@ function readStoredSession(value: unknown): SessionState | null {
   const difficulty = readDifficulty(raw.difficulty, raw.actionPointsTotal)
   const actionPointsTotal = ACTION_POINTS_BY_DIFFICULTY[difficulty]
   const gameState = raw.gameState === 'ended' ? 'ended' : 'active'
+  const legacyHistory = readHistory(raw.history)
+  const conversations = readConversations(raw.conversations, trust)
+  const restoredSubject = typeof raw.currentSubject === 'string' && raw.currentSubject in trust ? raw.currentSubject : null
+  // 旧版存档没有区分人物：把旧记录只还原到当时正在审讯的人，避免错误地出现在每个人名下。
+  if (legacyHistory.length && restoredSubject && conversations[restoredSubject].length === 0) conversations[restoredSubject] = legacyHistory
   const session: SessionState = {
     caseConfidence: clamp(asNumber(raw.caseConfidence), 0, 100),
     sessionId,
     caseId,
     updatedAt: typeof raw.updatedAt === 'string' && !Number.isNaN(Date.parse(raw.updatedAt)) ? raw.updatedAt : now(),
-    currentSubject: typeof raw.currentSubject === 'string' && raw.currentSubject in trust ? raw.currentSubject : null,
-    history: readHistory(raw.history),
+    currentSubject: restoredSubject,
+    conversations,
+    history: legacyHistory,
     trust,
     hostility: readNumberMap(raw.hostility),
     evidence: readEvidence(raw.evidence),

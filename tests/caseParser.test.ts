@@ -78,3 +78,46 @@ test('large cases split at a readable boundary and report completed chunks befor
   assert.ok(progress.includes(`extracting:${chunks.length}/${chunks.length}`))
   assert.equal(progress.at(-1), `merging:${chunks.length}/${chunks.length}`)
 })
+
+test('a novella-length Chinese case is segmented before a direct model call', async () => {
+  const source = `《雪夜孤灯》\n${'暴雪封山后，众人围绕密室命案互相指认。\n'.repeat(900)}`
+  const chunks = splitCaseText(source)
+  assert.ok(source.length > 12_000)
+  assert.ok(chunks.length > 1)
+  assert.ok(chunks.every((chunk) => chunk.length <= 12_100))
+
+  let calls = 0
+  const parsed = await parseCaseText(source, {
+    LLM_BASE_URL: 'https://example.com/v1', LLM_API_KEY: 'test-key', LLM_MODEL: 'test-model',
+  }, async () => {
+    calls += 1
+    const content = calls <= chunks.length
+      ? JSON.stringify({ characters: ['甲'], relationships: [], evidence: [], timeline: [], events: [], unresolved: [] })
+      : JSON.stringify(playable)
+    return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content } }] }), { status: 200 })
+  })
+  assert.equal(calls, chunks.length + 1)
+  assert.equal(parsed.culprit, '甲')
+})
+
+test('any material retries with smaller generic chunks after a context or gateway failure', async () => {
+  const source = '任意文章内容。'.repeat(1_000)
+  const fallbackChunks = splitCaseText(source, 6_000)
+  assert.equal(splitCaseText(source).length, 1)
+  assert.ok(fallbackChunks.length > 1)
+  let calls = 0
+  const progress: string[] = []
+  const parsed = await parseCaseText(source, {
+    LLM_BASE_URL: 'https://example.com/v1', LLM_API_KEY: 'test-key', LLM_MODEL: 'test-model',
+  }, async () => {
+    calls += 1
+    if (calls === 1) return new Response('<html>gateway limit</html>', { status: 200, headers: { 'Content-Type': 'text/html' } })
+    const content = calls <= fallbackChunks.length + 1
+      ? JSON.stringify({ characters: ['甲'], relationships: [], evidence: [], timeline: [], events: [], unresolved: [] })
+      : JSON.stringify(playable)
+    return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content } }] }), { status: 200 })
+  }, { onProgress: (entry) => progress.push(entry.message) })
+  assert.equal(calls, fallbackChunks.length + 2)
+  assert.equal(parsed.culprit, '甲')
+  assert.ok(progress.some((message) => message.includes('更小片段重新整理')))
+})

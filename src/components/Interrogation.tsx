@@ -42,28 +42,31 @@ interface Props {
   onModelConnected?: () => void
 }
 
-function toTimeline(history: SessionState['history']): ChatItem[] {
-  return history.map((line, index) => ({ id: `history_${index}`, kind: line.role, text: line.content }))
+function toTimeline(history: SessionState['history'], speaker?: string): ChatItem[] {
+  return history.map((line, index) => ({ id: `history_${index}`, kind: line.role, text: line.content, speaker: line.role === 'npc' ? speaker : undefined }))
 }
 
 export default function Interrogation({ session, briefing, onBack, onModelConnected }: Props) {
   const [state, setState] = useState(session)
   const [suspect, setSuspect] = useState(session.currentSubject ?? briefing.characters[0]?.name ?? '')
-  const [timeline, setTimeline] = useState<ChatItem[]>(() => toTimeline(session.history))
+  const [timeline, setTimeline] = useState<ChatItem[]>(() => toTimeline(session.conversations?.[session.currentSubject ?? briefing.characters[0]?.name ?? ''] ?? session.history, session.currentSubject ?? briefing.characters[0]?.name))
   const [question, setQuestion] = useState('')
   const [error, setError] = useState('')
   const [pendingFallback, setPendingFallback] = useState<ActionPayload | null>(null)
   const [busy, setBusy] = useState(false)
-  const [mobileTab, setMobileTab] = useState<MobileTab>('chat')
+  const [mobileTab, setMobileTab] = useState<MobileTab>('suspect')
   const [showModel, setShowModel] = useState(false)
   const [flashEvidenceId, setFlashEvidenceId] = useState('')
   const [flashTrust, setFlashTrust] = useState(false)
   const [showReplay, setShowReplay] = useState(false)
+  const [showBriefing, setShowBriefing] = useState(false)
+  const [showEvidence, setShowEvidence] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveNotice, setSaveNotice] = useState('')
   /** 当前可用话术：派生数据，按「会话 + 当前嫌疑人」从服务端现取。 */
   const [choices, setChoices] = useState<DialogueChoice[]>([])
   /** 与后端无关：只用来给「本局新解锁」的证据打标。 */
   const [lockedAtStart] = useState(() => new Set(session.evidence.filter((item) => !item.unlocked).map((item) => item.evidenceId)))
-  const sequence = useRef(0)
   const historyRef = useRef<HTMLDivElement>(null)
   const modelButtonRef = useRef<HTMLButtonElement>(null)
   const modelCloseRef = useRef<HTMLButtonElement>(null)
@@ -94,6 +97,7 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
   const currentHostility = state.hostility[suspect] ?? 0
   const presentedToCurrent = state.evidence.filter((item) => item.presentedTo.includes(suspect)).length
   const currentPerson = briefing.characters.find((person) => person.name === suspect)
+  const dialogueLineCount = timeline.filter((item) => item.kind === 'user' || item.kind === 'npc').length
 
   useEffect(() => {
     const element = historyRef.current
@@ -131,27 +135,16 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
     return () => { active = false }
   }, [session.sessionId, suspect, state.turn, state.actionPoints, ended])
 
-  function nextId(prefix: string) {
-    sequence.current += 1
-    return `${prefix}_${sequence.current}`
-  }
-
   /** 一次行动 = 提问 / 出示证据 / 沉默观察，统一消耗 1 行动点。 */
   async function act(payload: ActionPayload): Promise<boolean> {
     if (!canAct) return false
     const submittedText = payload.text ?? ''
-    // 选话术时，提问文本与附带证据都以服务端生成的那一份为准，这里只用于即时反馈与气泡文案。
+    // 选话术时，提问文本与附带证据都以服务端生成的那一份为准。
     const submittedChoice = payload.choiceId ? choices.find((item) => item.choiceId === payload.choiceId) ?? null : null
     const evidenceId = payload.evidenceId ?? submittedChoice?.evidenceId ?? ''
     const actionEvidence = evidenceId
       ? state.evidence.find((item) => item.evidenceId === evidenceId) ?? null
       : null
-    const playerText = payload.observe
-      ? '【沉默观察】'
-      : submittedChoice
-        ? `【${submittedChoice.label}】${submittedChoice.question}`
-        : actionEvidence ? `【出示证据：${actionEvidence.title}】${submittedText}` : submittedText
-
     setBusy(true)
     setError('')
     setPendingFallback(null)
@@ -176,13 +169,8 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
       setQuestion((current) => (current.trim() === submittedText.trim() ? '' : current))
       if (actionEvidence) setFlashEvidenceId(actionEvidence.evidenceId)
 
-      const appended: ChatItem[] = []
-      if (playerText) appended.push({ id: nextId('local'), kind: 'user', text: playerText, fresh: true })
-      if (body.reply) appended.push({ id: nextId('local'), kind: 'npc', text: body.reply, speaker: suspect, fresh: true })
-      for (const event of body.events ?? []) {
-        appended.push({ id: event.eventId, kind: 'system', text: `${event.title}｜${event.detail}`, fresh: true })
-      }
-      if (appended.length) setTimeline((current) => [...current, ...appended])
+      const events = (body.events ?? []).map((event) => ({ id: event.eventId, kind: 'system' as const, text: `${event.title}｜${event.detail}`, fresh: true }))
+      setTimeline([...toTimeline(body.session.conversations?.[suspect] ?? body.session.history, suspect), ...events])
       setFlashTrust(true)
       return true
     } catch (cause) {
@@ -242,6 +230,8 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
 
   function switchSuspect(next: string) {
     if (busy || next === suspect) return
+    // 每名嫌疑人保存一段独立对话；切回时恢复原有记录，不借用其他人的聊天框。
+    setTimeline(toTimeline(state.conversations?.[next] ?? state.history, next))
     setSuspect(next)
     setMobileTab('chat')
   }
@@ -250,6 +240,22 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       send()
+    }
+  }
+
+  async function saveNow() {
+    if (saving) return
+    setSaving(true)
+    setSaveNotice('')
+    try {
+      const response = await fetch('/api/saves/flush', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      const body = await response.json().catch(() => ({})) as { message?: string; error?: string }
+      if (!response.ok) throw new Error(body.error || '存档失败，请检查 save 文件夹权限。')
+      setSaveNotice(body.message || '已保存')
+    } catch (cause) {
+      setSaveNotice(cause instanceof Error ? cause.message : '存档失败，请重试。')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -332,9 +338,11 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
   return <main className="interrogation" data-mobile-view={mobileTab}>
     <div className="room-topbar">
       <div className="room-topbar-main">
-        <button className="room-back" type="button" onClick={onBack}>返回</button>
+        <button className="room-back" type="button" onClick={onBack}>返回主页</button>
+        <button className="room-back" type="button" onClick={() => setShowBriefing(true)}>前情提要</button>
         <span className="room-title">{briefing.title}<small>审讯进行中</small></span>
         <span className={`countdown ${actionPoints !== null && actionPoints <= 5 ? 'danger' : ''}`}>{actionPoints === null ? '练手模式 · 不限行动点' : `剩余行动点 ${actionPoints} / ${state.actionPointsTotal}`}</span>
+        <button className="save-now" type="button" disabled={saving} onClick={() => void saveNow()}>{saving ? '正在存档…' : '保存进度'}</button>
         <button ref={modelButtonRef} className={`model-btn ${showModel ? 'on' : ''}`} type="button" onClick={() => setShowModel(true)}>
           <GearIcon size={14} />模型
         </button>
@@ -403,7 +411,7 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
           <div><p>NOW INTERROGATING</p><h2>{suspect || '尚未选择嫌疑人'}</h2><span>{currentPerson?.publicIdentity || '相关人物'}</span></div>
           <div className="current-subject-stats"><b>信任 {currentTrust}</b><b>敌意 {currentHostility}</b><b>已出示 {presentedToCurrent}</b></div>
         </header>
-        <div className="chat-history" ref={historyRef} aria-live="polite">
+        <div className={`chat-history ${dialogueLineCount > 6 ? 'scrollable' : 'expanding'}`} ref={historyRef} aria-live="polite">
           {timeline.length === 0 && <p className="bubble-empty">选择嫌疑人后开始提问，或直接出示证据戳破证词。</p>}
           {timeline.map((item) => <Bubble key={item.id} item={item} />)}
           {busy && <p className="bubble system">对方正在组织语言…</p>}
@@ -414,16 +422,15 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
             <EyeIcon size={14} />沉默观察
           </button>
           <span className="action-hint">不追问，只看着对方：信任 +2，敌意 -1。提问或出示证据同样消耗 1 行动点。</span>
+          <button className="evidence-toggle" type="button" onClick={() => setShowEvidence(true)}>✉ 证物袋 <b>{state.evidence.filter((item) => item.unlocked).length}</b></button>
+          {saveNotice && <span className="save-notice" role="status">{saveNotice}</span>}
         </div>
 
-        <div className="evidence-bar">
-          <div className="evidence-bar-head">
-            <h3>证物栏</h3>
-            <span>{presentedToCurrent} 件已向{suspect || '当前嫌疑人'}出示 · 已解锁 {state.evidence.filter((item) => item.unlocked).length} / {state.evidence.length}</span>
-          </div>
-          {state.evidence.length === 0
-            ? <p className="bubble-empty">本案尚未提取到可出示的证据。</p>
-            : <div className="evidence-row">
+        {showEvidence && <div className="room-modal" role="dialog" aria-modal="true" aria-label="证物袋">
+          <div className="room-modal-inner evidence-modal">
+            <button className="room-modal-close" type="button" onClick={() => setShowEvidence(false)}><CloseIcon size={14} />收起证物袋</button>
+            <header><p>CASE EVIDENCE / {presentedToCurrent} 件已出示</p><h2>选择证物</h2><span>向 {suspect || '当前嫌疑人'} 出示证物会消耗 1 行动点</span></header>
+            {state.evidence.length === 0 ? <p className="bubble-empty">本案尚未提取到可出示的证据。</p> : <div className="evidence-grid">
               {state.evidence.map((item) => {
                 const shown = item.presentedTo.includes(suspect)
                 const isNew = item.unlocked && lockedAtStart.has(item.evidenceId)
@@ -433,7 +440,7 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
                   className={`evidence-chip ${shown ? 'presented' : ''} ${isNew ? 'fresh' : ''} ${flashEvidenceId === item.evidenceId ? 'evidence-submit' : ''}`}
                   disabled={!item.unlocked || !canAct}
                   title={item.detail}
-                  onClick={() => presentEvidence(item.evidenceId)}
+                  onClick={() => { presentEvidence(item.evidenceId); setShowEvidence(false) }}
                 >
                   {isNew && <span className="chip-badge">新</span>}
                   <strong>{item.unlocked ? item.title : '未解锁'}</strong>
@@ -441,7 +448,12 @@ export default function Interrogation({ session, briefing, onBack, onModelConnec
                 </button>
               })}
             </div>}
-        </div>
+          </div>
+        </div>}
+
+        {showBriefing && <div className="room-modal" role="dialog" aria-modal="true" aria-label="前情提要">
+          <div className="room-modal-inner briefing-modal"><button className="room-modal-close" type="button" onClick={() => setShowBriefing(false)}><CloseIcon size={14} />继续审讯</button><p>CASE BRIEFING / REFERENCE</p><h2>{briefing.title}</h2><section><h3>案件概览</h3><p>{briefing.summary || '案件材料正在等待你的推理。'}</p></section><section><h3>调查目标</h3><p>{briefing.objective}</p></section><section><h3>人物关系</h3>{briefing.relationships.map((item) => <p key={item}>— {item}</p>)}</section></div>
+        </div>}
 
         {choices.length > 0 && <div className="dialogue-options" role="group" aria-label="可用话术">
           <span className="dialogue-options-head">话术</span>

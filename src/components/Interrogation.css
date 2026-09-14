@@ -13,6 +13,8 @@
 .model-btn { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; padding: 8px 14px; border: 2px solid var(--line); background: transparent; color: var(--text); font: 700 12px var(--font-mono); cursor: pointer; transition: background .15s ease, color .15s ease; }
 .model-btn:hover { background: var(--line); color: #111; }
 .model-btn.on { border-color: var(--gold); color: var(--gold); }
+.save-now { flex: 0 0 auto; padding: 8px 14px; border: 0; background: var(--gold); color: #111; font: 800 12px var(--font-mono); cursor: pointer; clip-path: polygon(0 0, 100% 0, 88% 100%, 0 100%); }
+.save-now:hover:not(:disabled) { background: var(--red); color: #fff; }.save-now:disabled { opacity: .6; cursor: wait; }
 
 .room-meters { display: flex; flex-wrap: wrap; gap: 12px 22px; padding: 8px 16px 14px; border-top: 1px solid #3a3a3a; }
 .meter { flex: 1 1 220px; min-width: 170px; }
@@ -68,6 +70,8 @@
 .observe-btn:hover:not(:disabled) { transform: translate(-3px, -3px); background: var(--line); color: #111; box-shadow: 4px 4px 0 var(--gold); }
 .observe-btn:disabled { border-color: #3a3a3a; color: #8c8880; cursor: not-allowed; }
 .action-hint { flex: 1 1 200px; color: var(--dim); font: 11px var(--font-mono); line-height: 1.7; }
+.evidence-toggle { border: 0; padding: 10px 14px; background: var(--gold); color: #111; font: 800 12px var(--font-mono); cursor: pointer; clip-path: polygon(0 0,100% 0,90% 100%,0 100%); }.evidence-toggle b { margin-left: 6px; padding: 2px 6px; color: #fff; background: var(--red); }
+.save-notice { color: var(--gold); font: 700 11px var(--font-mono); }
 
 /* 话术选项：对话图的玩家侧节点，按层级配色（金＝常规、青＝共情、红＝施压与风险） */
 .dialogue-options { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 10px; padding: 12px 16px; border-top: 2px solid #3a3a3a; background: #141414; }
@@ -156,6 +160,7 @@
 .room-modal-inner { width: 100%; max-width: 560px; animation: roomPanelOpen .28s cubic-bezier(.2, .9, .2, 1) both; }
 .room-modal-close { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 10px; padding: 8px 14px; border: 2px solid var(--line); background: transparent; color: var(--text); font: 700 12px var(--font-mono); cursor: pointer; }
 .room-modal-close:hover { background: var(--line); color: #111; }
+.evidence-modal, .briefing-modal { max-width: 760px; padding: 24px; background: var(--paper); color: #111; clip-path: polygon(0 0,100% 0,96% 96%,0 100%); box-shadow: 12px 14px 0 var(--red); }.evidence-modal header p, .briefing-modal > p { margin: 0; color: var(--red); font: 800 11px var(--font-mono); letter-spacing: .14em; }.evidence-modal h2, .briefing-modal h2 { margin: 8px 0 14px; font: 900 34px var(--font-display); }.evidence-modal header > span { font-size: 12px; font-weight: 700; }.evidence-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 12px; margin-top: 20px; }.evidence-modal .evidence-chip { max-width: none; background: #111; color: var(--paper); }.briefing-modal section { margin-top: 18px; padding: 14px; background: #111; color: var(--paper); clip-path: polygon(0 0,100% 0,96% 100%,0 100%); }.briefing-modal h3 { margin: 0 0 8px; color: var(--gold); font-size: 12px; letter-spacing: .12em; }.briefing-modal section p { margin: 5px 0; line-height: 1.75; }
 
 /* ---------- 结局页 ---------- */
 .ending-page { min-height: 100svh; padding: 44px 24px 72px; background: var(--bg); color: var(--text); }
@@ -266,7 +271,16 @@
 .interrogation[data-mobile-view="suspect"] .room-left { display: flex; flex: 1 1 auto; }
 .interrogation[data-mobile-view="chat"] .room-main { display: flex; flex: 1 1 auto; }
 .interrogation[data-mobile-view="board"] .room-right { display: flex; flex: 1 1 auto; }
+.room-body:has(.room-modal) { z-index: 20; }
 .current-subject { display: flex; flex: 0 0 auto; align-items: center; gap: 14px; padding: 16px 20px; color: #111; background: var(--paper); clip-path: polygon(0 0, 100% 0, 97% 100%, 0 100%); box-shadow: inset 0 -5px 0 var(--red); }
 .current-subject-mark { display: grid; flex: 0 0 auto; place-items: center; width: 46px; height: 46px; color: var(--paper); background: #111; font-family: var(--font-display); font-size: 28px; transform: rotate(-7deg); }
 .current-subject p { margin: 0; color: var(--red); font: 800 10px var(--font-mono); letter-spacing: .14em; }.current-subject h2 { margin: 2px 0; font-size: 20px; line-height: 1.1; }.current-subject div > span { font-size: 12px; font-weight: 700; }.current-subject-stats { display: flex; flex: 1 1 auto; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }.current-subject-stats b { padding: 4px 8px; border: 2px solid #111; font: 800 11px var(--font-mono); }.current-subject-stats b:nth-child(2) { color: #fff; background: var(--red); border-color: var(--red); }
 @media (max-width: 560px) { .current-subject { align-items: flex-start; flex-wrap: wrap; padding: 14px; }.current-subject-stats { flex-basis: 100%; justify-content: flex-start; }.meter { flex-basis: 280px; }.room-meters { padding-inline: 14px; } }
+
+/* 前三轮（六条气泡）完整铺开；从第四轮起只让对话记录在自身区域滚动，输入与分区导航不会被推出屏幕。 */
+.room-body { height: auto; min-height: 560px; }
+.room-main { min-height: 0; overflow: visible; }
+.chat-history { min-height: 340px; overscroll-behavior: contain; }
+.chat-history.expanding { flex: 0 0 auto; overflow: visible; }
+.chat-history.scrollable { flex: 0 0 auto; height: min(54dvh, 560px); max-height: 560px; overflow-y: auto; }
+@media (max-height: 760px) { .chat-history.scrollable { height: 390px; min-height: 390px; } }

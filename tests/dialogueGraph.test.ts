@@ -28,6 +28,7 @@ function fixtureSession(overrides: Partial<SessionState> = {}): SessionState {
     caseId: 'case_test',
     updatedAt: new Date(0).toISOString(),
     currentSubject: '甲',
+    conversations: { 甲: [], 乙: [] },
     history: [],
     trust: { 甲: 50, 乙: 50 },
     hostility: { 甲: 0, 乙: 0 },

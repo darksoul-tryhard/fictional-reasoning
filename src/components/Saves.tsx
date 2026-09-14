@@ -68,14 +68,15 @@ export default function Saves({ onResume }: { onResume: (sessionId: string) => v
   }
 
   return <section className="saves" aria-labelledby="saves-title">
-    <h2 id="saves-title">存档</h2>
-    {saves === null && <p className="saves-empty">正在读取存档…</p>}
-    {saves !== null && saves.length === 0 && <p className="saves-empty">还没有存档。载入案件并开始审讯后会自动生成。</p>}
+    <header className="saves-header"><p>SAVE FILE / LOCAL</p><h2 id="saves-title">存档管理</h2></header>
+    {saves === null && <p className="saves-empty">正在打开档案柜…</p>}
+    {saves !== null && saves.length === 0 && <p className="saves-empty">档案柜为空。载入案件并开始审讯后会自动生成本地存档。</p>}
 
     {saves !== null && saves.length > 0 && <ul className="saves-list">
       {saves.map((slot) => <li key={slot.sessionId} className={`save-slot ${slot.gameState === 'ended' ? 'ended' : ''}`}>
+        <div className="save-index" aria-hidden="true">{String(saves.indexOf(slot) + 1).padStart(2, '0')}</div>
         <div className="save-head">
-          <strong>{slot.caseTitle}</strong>
+          <p>案件</p><strong>案件：{slot.caseTitle}</strong>
           <span className={`save-state ${slot.gameState === 'ended' ? 'ended' : 'active'}`}>
             {slot.gameState === 'ended' ? ENDING_LABEL[slot.endingKind ?? ''] ?? '已结束' : '进行中'}
           </span>

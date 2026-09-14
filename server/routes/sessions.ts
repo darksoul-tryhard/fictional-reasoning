@@ -190,7 +190,7 @@ export function createSessionsRouter() {
       objective: briefing.objective,
       allowedFacts: buildAllowedFacts(session, record, character, evidence, target),
       stateSummary: buildStateSummary(session, suspectId),
-      transcript: [...session.history],
+      transcript: [...(session.conversations[suspectId] ?? [])],
     }
 
     const useRuleFallback = body.useRuleFallback === true
@@ -220,8 +220,8 @@ export function createSessionsRouter() {
     const spokenLine = choice
       ? `【${choice.label}】${question}`
       : evidence ? `【出示证据：${evidence.title}】${question}` : question
-    pushHistory(session, 'user', observing ? '【沉默观察】' : spokenLine)
-    pushHistory(session, 'npc', outcome.reply)
+    pushHistory(session, suspectId, 'user', observing ? '【沉默观察】' : spokenLine)
+    pushHistory(session, suspectId, 'npc', outcome.reply)
 
     // 话术层级自带的态度修正：叠加在模型/规则算出的增量之上，让「说什么」本身成为一种战术。
     const tierModifier = choice ? TIER_MODIFIERS[choice.tier] : { trust: 0, hostility: 0 }

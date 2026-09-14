@@ -38,6 +38,55 @@ function resolveEndpoint(baseUrl: string, apiKey: string, model: string): URL {
   }
 }
 
+type ChatChoice = { finish_reason?: unknown; message?: { content?: unknown }; delta?: { content?: unknown } }
+type ChatEnvelope = { choices?: ChatChoice[] }
+
+/**
+ * 少数“OpenAI 兼容”网关会忽略 stream:false，仍以 SSE 返回完整内容。
+ * 仅在响应体确实是 SSE 时收集 choices[0].delta.content；普通 JSON 仍走原路径。
+ */
+function parseSseEnvelope(body: string): ChatEnvelope | null {
+  if (!/^\s*data:/mu.test(body)) return null
+  const contents: string[] = []
+  let last: ChatEnvelope | null = null
+  for (const line of body.split(/\r?\n/u)) {
+    if (!line.startsWith('data:')) continue
+    const data = line.slice(5).trim()
+    if (!data || data === '[DONE]') continue
+    try {
+      const event = JSON.parse(data) as ChatEnvelope
+      last = event
+      const content = event.choices?.[0]?.delta?.content
+      if (typeof content === 'string') contents.push(content)
+    } catch {
+      // 单条 SSE 损坏时不把内容回显；最终统一报告为接口响应格式问题。
+      return null
+    }
+  }
+  if (contents.length > 0) {
+    return { choices: [{ finish_reason: last?.choices?.[0]?.finish_reason ?? 'stop', message: { content: contents.join('') } }] }
+  }
+  return last
+}
+
+function parseProviderEnvelope(bytes: Uint8Array[], contentType: string | null): ChatEnvelope {
+  const body = Buffer.concat(bytes).toString('utf8').trim()
+  if (!body) throw new ModelError('INVALID_MODEL_OUTPUT', '模型服务返回为空。')
+  try { return JSON.parse(body) as ChatEnvelope }
+  catch {
+    const sse = parseSseEnvelope(body)
+    if (sse) return sse
+    // 这里特意不包含原始响应正文：其中可能有网关诊断、账号信息或其他敏感内容。
+    const isHtml = /text\/html/i.test(contentType ?? '') || /^\s*<!doctype html|^\s*<html[\s>]/i.test(body)
+    throw new ModelError(
+      'MODEL_RESPONSE_NOT_JSON',
+      isHtml
+        ? '模型服务返回了网页而不是 API 数据，请检查 Base URL 是否指向接口地址。'
+        : '模型服务返回的数据格式无效，请检查模型服务是否兼容 OpenAI chat/completions 接口。',
+    )
+  }
+}
+
 export async function requestChatJson(request: ChatJsonRequest, transport: typeof fetch = fetch): Promise<unknown> {
   const url = resolveEndpoint(request.baseUrl, request.apiKey, request.model)
   // 案件解析可传 Infinity：由上层负责生命周期控制，本客户端不因文本较长而主动超时。
@@ -59,6 +108,12 @@ export async function requestChatJson(request: ChatJsonRequest, transport: typeo
     })
     if (!response.ok) {
       await response.body?.cancel()
+      if (response.status === 401 || response.status === 403) {
+        throw new ModelError('LLM_AUTH_FAILED', 'API Key 无效或无权访问该模型。', response.status)
+      }
+      if (response.status === 400 || response.status === 413 || response.status === 422) {
+        throw new ModelError('LLM_CONTEXT_REJECTED', '模型服务拒绝了本次材料请求，将尝试使用更小的文本片段。', response.status)
+      }
       throw new ModelError(
         response.status === 429 ? 'LLM_RATE_LIMITED' : 'LLM_REQUEST_FAILED',
         '模型服务拒绝请求，请检查配置或稍后重试。',
@@ -82,11 +137,9 @@ export async function requestChatJson(request: ChatJsonRequest, transport: typeo
       }
     } finally { reader.releaseLock() }
 
-    let payload: unknown
-    try { payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) }
-    catch { throw new ModelError('INVALID_MODEL_OUTPUT', '模型返回的数据无法解析。') }
+    const payload = parseProviderEnvelope(chunks, response.headers.get('content-type'))
 
-    const result = payload as { choices?: Array<{ finish_reason?: unknown; message?: { content?: unknown } }> }
+    const result = payload
     const choice = result?.choices?.[0]
     const finishReason = choice?.finish_reason
     // OpenAI 兼容服务的 finish_reason 不完全一致：stop、null/缺失都可能表示正常完成；

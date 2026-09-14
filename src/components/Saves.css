@@ -1,14 +1,16 @@
-.saves { position: relative; padding: 26px; border: 3px solid var(--line); background: var(--panel); color: var(--text); box-shadow: 8px 8px 0 var(--cyan); }
+.saves { position: relative; padding: 32px; border: 0; background: var(--paper); color: #111; clip-path: polygon(0 0,100% 0,96% 97%,0 100%); box-shadow: 14px 15px 0 var(--red); }
+.saves-header { position: relative; margin: -12px 0 24px; padding: 12px 18px 16px; color: var(--paper); background: #111; clip-path: polygon(0 0,100% 0,96% 100%,0 100%); }.saves-header p { margin: 0; color: var(--gold); font: 800 10px var(--font-mono); letter-spacing: .18em; }.saves-header h2 { margin: 7px 0 4px; font: 900 34px var(--font-display); font-style: italic; letter-spacing: -.03em; }.saves-header span { font-size: 12px; font-weight: 700; }
 .saves h2 { display: inline-block; margin: 0 0 14px; padding: 6px 22px 6px 14px; color: #111; background: var(--cyan); font-size: 18px; clip-path: polygon(0 0, 100% 0, 94% 100%, 0 100%); }
 .saves-empty { padding: 18px; border: 2px dashed #3a3a3a; background: #101010; color: var(--dim); font: 700 13px var(--font-mono); }
 
 .saves-list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
-.save-slot { padding: 16px; border: 3px solid var(--line); background: #101010; transition: transform .15s ease, box-shadow .15s ease; }
+.save-slot { position: relative; display: grid; grid-template-columns: 66px minmax(0,1fr); gap: 0 14px; padding: 16px 18px; border: 0; background: #111; color: var(--paper); clip-path: polygon(0 0,100% 0,97% 100%,0 100%); box-shadow: inset 0 0 0 2px var(--paper); transition: transform .15s ease, box-shadow .15s ease; }
+.save-index { grid-row: span 3; display: grid; place-items: start center; padding-top: 4px; color: var(--red); font: 900 30px var(--font-display); transform: skewX(-9deg); }
 .save-slot:hover { transform: translate(-3px, -3px); box-shadow: 5px 5px 0 var(--gold); }
 .save-slot.ended { border-color: #3a3a3a; background: #141414; }
 
 .save-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
-.save-head strong { font-size: 16px; overflow-wrap: anywhere; }
+.save-head p { margin: 0 0 3px; color: var(--gold); font: 800 10px var(--font-mono); letter-spacing: .16em; }.save-head strong { font-size: 19px; overflow-wrap: anywhere; }
 .save-state { padding: 4px 11px; font: 700 11px var(--font-mono); clip-path: polygon(6% 0, 100% 0, 94% 100%, 0 100%); }
 .save-state.active { background: var(--gold); color: #111; }
 .save-state.ended { background: var(--red); color: #fff; }
@@ -25,4 +27,4 @@
   .save-time { flex: 1 1 100%; }
 }
 
-.saves { border: 0; background: var(--paper); color: #111; clip-path: polygon(0 0, 100% 0, calc(100% - 24px) 100%, 0 100%); box-shadow: 12px 13px 0 var(--red); }.saves h2 { background: var(--red); color: #fff; }.saves-empty { border-color: #111; background: #e7ddd0; color: #352d28; }.save-slot { border: 0; background: #111; color: var(--paper); clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%); box-shadow: inset 0 0 0 2px var(--paper); }.save-slot:hover { transform: translate(-4px, -4px); box-shadow: inset 0 0 0 2px var(--paper), 6px 7px 0 var(--red); }.save-slot.ended { background: #2a2a2a; }.save-head strong { color: var(--paper); }.save-stats { color: #d7cec1; }.save-state.active { background: var(--paper); color: #111; }.save-time { color: #d7cec1; }
+.saves-empty { border-color: #111; background: #e7ddd0; color: #352d28; }.save-slot:hover { transform: translate(-4px,-4px); box-shadow: inset 0 0 0 2px var(--paper),7px 8px 0 var(--red); }.save-slot.ended { background: #2a2a2a; }.save-stats { color: #d7cec1; }.save-state.active { background: var(--paper); color: #111; }.save-time { color: #d7cec1; }
